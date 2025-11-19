@@ -13,18 +13,15 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Checkout del código
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 2. Login en Docker Hub
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_PASSWORD }}
 
-      # 3. Build & push (FASE BUILD)
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
@@ -32,27 +29,27 @@ jobs:
           push: true
           tags: ${{ env.DOCKER_IMAGE }}
 
-      # 4. Configurar kubectl (poner kubeconfig desde el secreto)
       - name: Set up kubeconfig
         run: |
           mkdir -p ~/.kube
           echo "${{ secrets.KUBECONFIG_DATA }}" > ~/.kube/config
 
-      # 5. Despliegue (FASE DEPLOY)
+      # FASE DEPLOY (permitimos que falle)
       - name: Deploy to Kubernetes
+        id: deploy
+        continue-on-error: true
         run: |
-          kubectl apply -f k8s/deployment.yaml
+          echo "Haciendo deploy (puede fallar porque el cluster es falso)..."
+          kubectl apply -f k8s/deployment.yaml || echo "Error en deploy, continuamos para simular validación y rollback"
 
-      # 6. Validación (FASE VALIDATE)
-      #    continue-on-error: true para que, si falla,
-      #    podamos ejecutar la etapa de rollback.
+      # FASE VALIDATE (también puede fallar)
       - name: Validate rollout
         id: validate
         continue-on-error: true
         run: |
           kubectl rollout status deployment/kubefoods-backend --timeout=30s
 
-      # 7. Rollback si la validación falla (FASE ROLLBACK)
+      # FASE ROLLBACK
       - name: Rollback if validation failed
         if: steps.validate.outcome == 'failure'
         run: |
